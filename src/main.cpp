@@ -22,6 +22,6 @@ int main() {
     else if(command.substr(0,5) == "type " && (command.substr(5) == "echo" || command.substr(5) == "exit" || command.substr(5) == "type"))
       std::cout<<command.substr(5)<<" is a shell builtin"<<std::endl;
     else
-      std::cout<<command<<": command not found"<<std::endl;
+      std::cout<<command.substr(5)<<": command not found"<<std::endl;
   }
 }
