@@ -15,6 +15,10 @@ int main() {
       break;
     else if (command == "exit")
       break;
+    if (command.substr(0,5) == "echo")
+    {
+      std::cout<<command.substr(5)<<std::endl;
+    }
     std::cout<<command<<": command not found"<<std::endl;
   }
 }
