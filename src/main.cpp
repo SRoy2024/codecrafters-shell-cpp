@@ -13,7 +13,7 @@ int main() {
     std::string command;
     if(!std::getline(std::cin, command))
       break;
-    else if (command == "input")
+    else if (command == "exit")
       break;
     std::cout<<command<<": command not found"<<std::endl;
   }
