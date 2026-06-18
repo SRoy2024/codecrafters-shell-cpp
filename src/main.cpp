@@ -3,7 +3,7 @@
 #include <cstdlib>
 #include <fstream>
 #include <sstream>
-
+#include <unistd.h>
 int main() {
   // Flush after every std::cout / std:cerr
   std::cout << std::unitbuf;
@@ -39,9 +39,7 @@ int main() {
         {
             std::string fullPath = dir + "/" + cmd;
 
-            std::ifstream file(fullPath);
-
-            if(file.good())
+            if(access(fullPath.c_str(), X_OK) == 0)
             {
                 std::cout << cmd << " is " << fullPath << std::endl;
                 found = true;
