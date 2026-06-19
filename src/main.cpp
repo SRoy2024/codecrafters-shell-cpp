@@ -5,6 +5,8 @@
 #include <unistd.h>
 #include <vector>
 #include <sys/wait.h>
+#include <fstream>
+#include <fcntl.h>
 
 int main() {
     std::cout << std::unitbuf;
@@ -12,12 +14,14 @@ int main() {
 
     while (true)
     {
-      bool escaped = false;
+        bool escaped = false;
+
         std::cout << "$ ";
 
         std::string command;
         if (!std::getline(std::cin, command))
             break;
+
         std::vector<std::string> args;
         std::string current;
 
@@ -82,6 +86,31 @@ int main() {
             args.push_back(current);
         }
 
+        // Handle stdout redirection (> and 1>)
+        std::string outputFile;
+        bool redirectStdout = false;
+
+        for (size_t i = 0; i + 1 < args.size(); i++)
+        {
+            if (args[i] == ">" || args[i] == "1>")
+            {
+                redirectStdout = true;
+                outputFile = args[i + 1];
+
+                args.erase(args.begin() + i, args.begin() + i + 2);
+                break;
+            }
+        }
+
+        std::ofstream file;
+        std::ostream* out = &std::cout;
+
+        if (redirectStdout)
+        {
+            file.open(outputFile);
+            out = &file;
+        }
+
         if (args.empty())
             continue;
 
@@ -94,11 +123,12 @@ int main() {
             for (size_t i = 1; i < args.size(); i++)
             {
                 if (i > 1)
-                    std::cout << " ";
+                    (*out) << " ";
 
-                std::cout << args[i];
+                (*out) << args[i];
             }
-            std::cout << std::endl;
+
+            (*out) << std::endl;
         }
         else if (args[0] == "type")
         {
@@ -113,7 +143,7 @@ int main() {
                 cmd == "pwd"  ||
                 cmd == "cd")
             {
-                std::cout << cmd << " is a shell builtin" << std::endl;
+                (*out) << cmd << " is a shell builtin" << std::endl;
             }
             else
             {
@@ -129,14 +159,14 @@ int main() {
 
                     if (access(fullPath.c_str(), X_OK) == 0)
                     {
-                        std::cout << cmd << " is " << fullPath << std::endl;
+                        (*out) << cmd << " is " << fullPath << std::endl;
                         found = true;
                         break;
                     }
                 }
 
                 if (!found)
-                    std::cout << cmd << ": not found" << std::endl;
+                    (*out) << cmd << ": not found" << std::endl;
             }
         }
         else if (args[0] == "pwd")
@@ -144,7 +174,7 @@ int main() {
             char cwd[1024];
 
             if (getcwd(cwd, sizeof(cwd)) != nullptr)
-                std::cout << cwd << std::endl;
+                (*out) << cwd << std::endl;
         }
         else if (args[0] == "cd")
         {
@@ -158,7 +188,8 @@ int main() {
 
             if (chdir(path.c_str()) != 0)
             {
-                std::cout << "cd: " << path
+                std::cout << "cd: "
+                          << path
                           << ": No such file or directory"
                           << std::endl;
             }
@@ -176,6 +207,18 @@ int main() {
 
             if (pid == 0)
             {
+                if (redirectStdout)
+                {
+                    int fd = open(
+                        outputFile.c_str(),
+                        O_WRONLY | O_CREAT | O_TRUNC,
+                        0644
+                    );
+
+                    dup2(fd, STDOUT_FILENO);
+                    close(fd);
+                }
+
                 execvp(argv[0], argv.data());
 
                 std::cout << args[0] << ": not found" << std::endl;
@@ -187,4 +230,4 @@ int main() {
     }
 
     return 0;
-  }
+}
