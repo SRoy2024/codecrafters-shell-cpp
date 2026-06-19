@@ -92,12 +92,22 @@ int main() {
 
         bool redirectStdout = false;
         bool redirectStderr = false;
+        bool appendStdout = false;
 
         for (size_t i = 0; i + 1 < args.size(); )
         {
             if (args[i] == ">" || args[i] == "1>")
             {
                 redirectStdout = true;
+                appendStdout = false;
+                outputFile = args[i + 1];
+
+                args.erase(args.begin() + i, args.begin() + i + 2);
+            }
+            else if (args[i] == ">>" || args[i] == "1>>")
+            {
+                redirectStdout = true;
+                appendStdout = true;
                 outputFile = args[i + 1];
 
                 args.erase(args.begin() + i, args.begin() + i + 2);
@@ -119,7 +129,11 @@ int main() {
 
         if (redirectStdout)
         {
-            outFile.open(outputFile);
+            if (appendStdout)
+                outFile.open(outputFile, std::ios::app);
+            else
+                outFile.open(outputFile);
+
             out = &outFile;
         }
 
@@ -238,11 +252,24 @@ int main() {
 
                 if (redirectStderr)
                 {
-                    int fd = open(
-                        errorFile.c_str(),
-                        O_WRONLY | O_CREAT | O_TRUNC,
-                        0644
-                    );
+                    int fd;
+
+                    if (appendStdout)
+                    {
+                        fd = open(
+                            outputFile.c_str(),
+                            O_WRONLY | O_CREAT | O_APPEND,
+                            0644
+                        );
+                    }
+                    else
+                    {
+                        fd = open(
+                            outputFile.c_str(),
+                            O_WRONLY | O_CREAT | O_TRUNC,
+                            0644
+                        );
+                    }
 
                     dup2(fd, STDERR_FILENO);
                     close(fd);
