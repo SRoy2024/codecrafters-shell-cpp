@@ -240,18 +240,6 @@ int main() {
             {
                 if (redirectStdout)
                 {
-                    int fd = open(
-                        outputFile.c_str(),
-                        O_WRONLY | O_CREAT | O_TRUNC,
-                        0644
-                    );
-
-                    dup2(fd, STDOUT_FILENO);
-                    close(fd);
-                }
-
-                if (redirectStderr)
-                {
                     int fd;
 
                     if (appendStdout)
@@ -270,6 +258,18 @@ int main() {
                             0644
                         );
                     }
+
+                    dup2(fd, STDOUT_FILENO);
+                    close(fd);
+                }
+
+                if (redirectStderr)
+                {
+                    int fd = open(
+                        errorFile.c_str(),
+                        O_WRONLY | O_CREAT | O_TRUNC,
+                        0644
+                    );
 
                     dup2(fd, STDERR_FILENO);
                     close(fd);
