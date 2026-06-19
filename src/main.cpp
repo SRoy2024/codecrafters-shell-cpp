@@ -62,6 +62,8 @@ int main() {
     else if ( command.rfind("cd", 0) == 0)
     {
       std::string Path = command.substr(3);
+      if(Path == "~")
+          Path = getenv("HOME");
       if(chdir(Path.c_str()) != 0)
         std::cout<<"cd: "<<Path<<": No such file or directory"<<std::endl;
     }
