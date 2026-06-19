@@ -28,8 +28,28 @@ int main() {
         {
             if (escaped)
             {
-                current += c;
+                if (in_double_quote)
+                {
+                    if (c == '"' || c == '\\')
+                    {
+                        current += c;
+                    }
+                    else
+                    {
+                        current += '\\';
+                        current += c;
+                    }
+                }
+                else
+                {
+                    current += c;
+                }
+
                 escaped = false;
+            }
+            else if (in_double_quote && c == '\\')
+            {
+                escaped = true;
             }
             else if (!in_single_quote && !in_double_quote && c == '\\')
             {
