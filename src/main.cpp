@@ -88,9 +88,12 @@ int main() {
 
         // Handle stdout redirection (> and 1>)
         std::string outputFile;
-        bool redirectStdout = false;
+        std::string errorFile;
 
-        for (size_t i = 0; i + 1 < args.size(); i++)
+        bool redirectStdout = false;
+        bool redirectStderr = false;
+
+        for (size_t i = 0; i + 1 < args.size(); )
         {
             if (args[i] == ">" || args[i] == "1>")
             {
@@ -98,19 +101,36 @@ int main() {
                 outputFile = args[i + 1];
 
                 args.erase(args.begin() + i, args.begin() + i + 2);
-                break;
+            }
+            else if (args[i] == "2>")
+            {
+                redirectStderr = true;
+                errorFile = args[i + 1];
+
+                args.erase(args.begin() + i, args.begin() + i + 2);
+            }
+            else
+            {
+                i++;
             }
         }
-
-        std::ofstream file;
+        std::ofstream outFile;
         std::ostream* out = &std::cout;
 
         if (redirectStdout)
         {
-            file.open(outputFile);
-            out = &file;
+            outFile.open(outputFile);
+            out = &outFile;
         }
 
+        std::ofstream errFile;
+        std::ostream* err = &std::cerr;
+
+        if (redirectStderr)
+        {
+            errFile.open(errorFile);
+            err = &errFile;
+        }
         if (args.empty())
             continue;
 
@@ -166,7 +186,7 @@ int main() {
                 }
 
                 if (!found)
-                    (*out) << cmd << ": not found" << std::endl;
+                    (*err) << cmd << ": not found" << std::endl;
             }
         }
         else if (args[0] == "pwd")
@@ -188,10 +208,7 @@ int main() {
 
             if (chdir(path.c_str()) != 0)
             {
-                std::cout << "cd: "
-                          << path
-                          << ": No such file or directory"
-                          << std::endl;
+                (*err) << "cd: "<< path<< ": No such file or directory"<< std::endl;
             }
         }
         else
@@ -219,9 +236,21 @@ int main() {
                     close(fd);
                 }
 
+                if (redirectStderr)
+                {
+                    int fd = open(
+                        errorFile.c_str(),
+                        O_WRONLY | O_CREAT | O_TRUNC,
+                        0644
+                    );
+
+                    dup2(fd, STDERR_FILENO);
+                    close(fd);
+                }
+
                 execvp(argv[0], argv.data());
 
-                std::cout << args[0] << ": not found" << std::endl;
+                std::cerr << args[0] << ": not found" << std::endl;
                 exit(1);
             }
 
