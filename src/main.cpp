@@ -63,7 +63,7 @@ int main() {
     {
       std::string Path = command.substr(3);
       if(chdir(Path.c_str()) != 0)
-        std::cout<<"cd:"<<Path<<": No such file or directory"<<std::endl;
+        std::cout<<"cd: "<<Path<<": No such file or directory"<<std::endl;
     }
     else
     {
