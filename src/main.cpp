@@ -4,6 +4,8 @@
 #include <fstream>
 #include <sstream>
 #include <unistd.h>
+#include <vector>
+#include <sys/wait.h>
 int main() {
   // Flush after every std::cout / std:cerr
   std::cout << std::unitbuf;
@@ -52,6 +54,31 @@ int main() {
       }
     }
     else
-      std::cout<<command<<": not found"<<std::endl;
+    {
+        std::stringstream ss(command);
+        std::vector<std::string> args;
+        std::string token;
+
+        while (ss >> token)
+            args.push_back(token);
+
+        std::vector<char*> argv;
+        for (auto& arg : args)
+            argv.push_back(const_cast<char*>(arg.c_str()));
+
+        argv.push_back(nullptr);
+
+        pid_t pid = fork();
+
+        if (pid == 0)
+        {
+            execvp(argv[0], argv.data());
+
+            std::cout << args[0] << ": not found" << std::endl;
+            exit(1);
+        }
+
+        wait(nullptr);
+    }
   }
 }
