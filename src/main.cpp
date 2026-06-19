@@ -53,6 +53,12 @@ int main() {
             std::cout << cmd << ": not found" << std::endl;
       }
     }
+    else if ( command == "pwd")
+    {
+      char cwd[1024];
+      if(getcwd(cwd, sizeof(cwd)) != nullptr)
+          std::cout<<cwd<<std::endl;
+    }
     else
     {
         std::stringstream ss(command);
