@@ -1,98 +1,155 @@
 #include <iostream>
 #include <string>
 #include <cstdlib>
-#include <fstream>
 #include <sstream>
 #include <unistd.h>
 #include <vector>
 #include <sys/wait.h>
+
 int main() {
-  // Flush after every std::cout / std:cerr
-  std::cout << std::unitbuf;
-  std::cerr << std::unitbuf;
+    std::cout << std::unitbuf;
+    std::cerr << std::unitbuf;
 
-  // TODO: Uncomment the code below to pass the first stage
-  while(true)
-  {
-    std::cout << "$ ";
-    std::string command;
-    if(!std::getline(std::cin, command))
-      break;
-    else if (command == "exit")
-      break;
-    if (command.substr(0,5) == "echo ")
+    while (true)
     {
-      std::cout<<command.substr(5)<<std::endl;
-    }
-    else if(command.substr(0,5) == "type " )
-    {
-      if((command.substr(5) == "echo" || command.substr(5) == "exit" || command.substr(5) == "type" || command.substr(5) == "pwd" || command.substr(5) == "cd"))
-        std::cout<<command.substr(5)<<" is a shell builtin"<<std::endl;
-      else
-      {
-        std::string cmd = command.substr(5);
-        std::string path = std::getenv("PATH");
-        std::stringstream ss(path);
-        std::string dir;
+        std::cout << "$ ";
 
-        bool found = false;
+        std::string command;
+        if (!std::getline(std::cin, command))
+            break;
 
-        while(std::getline(ss, dir, ':'))
+        // Parse command (supports single quotes)
+        std::vector<std::string> args;
+        std::string current;
+        bool in_single_quote = false;
+
+        for (char c : command)
         {
-            std::string fullPath = dir + "/" + cmd;
-
-            if(access(fullPath.c_str(), X_OK) == 0)
+            if (c == '\'')
             {
-                std::cout << cmd << " is " << fullPath << std::endl;
-                found = true;
-                break;
+                in_single_quote = !in_single_quote;
+            }
+            else if (c == ' ' && !in_single_quote)
+            {
+                if (!current.empty())
+                {
+                    args.push_back(current);
+                    current.clear();
+                }
+            }
+            else
+            {
+                current += c;
             }
         }
 
-        if(!found)
-            std::cout << cmd << ": not found" << std::endl;
-      }
-    }
-    else if ( command == "pwd")
-    {
-      char cwd[1024];
-      if(getcwd(cwd, sizeof(cwd)) != nullptr)
-          std::cout<<cwd<<std::endl;
-    }
-    else if ( command.rfind("cd", 0) == 0)
-    {
-      std::string Path = command.substr(3);
-      if(Path == "~")
-          Path = getenv("HOME");
-      if(chdir(Path.c_str()) != 0)
-        std::cout<<"cd: "<<Path<<": No such file or directory"<<std::endl;
-    }
-    else
-    {
-        std::stringstream ss(command);
-        std::vector<std::string> args;
-        std::string token;
+        if (!current.empty())
+            args.push_back(current);
 
-        while (ss >> token)
-            args.push_back(token);
+        if (args.empty())
+            continue;
 
-        std::vector<char*> argv;
-        for (auto& arg : args)
-            argv.push_back(const_cast<char*>(arg.c_str()));
-
-        argv.push_back(nullptr);
-
-        pid_t pid = fork();
-
-        if (pid == 0)
+        if (args[0] == "exit")
         {
-            execvp(argv[0], argv.data());
-
-            std::cout << args[0] << ": not found" << std::endl;
-            exit(1);
+            break;
         }
+        else if (args[0] == "echo")
+        {
+            for (size_t i = 1; i < args.size(); i++)
+            {
+                if (i > 1)
+                    std::cout << " ";
 
-        wait(nullptr);
+                std::cout << args[i];
+            }
+            std::cout << std::endl;
+        }
+        else if (args[0] == "type")
+        {
+            if (args.size() < 2)
+                continue;
+
+            std::string cmd = args[1];
+
+            if (cmd == "echo" ||
+                cmd == "exit" ||
+                cmd == "type" ||
+                cmd == "pwd"  ||
+                cmd == "cd")
+            {
+                std::cout << cmd << " is a shell builtin" << std::endl;
+            }
+            else
+            {
+                std::string path = std::getenv("PATH");
+                std::stringstream ss(path);
+                std::string dir;
+
+                bool found = false;
+
+                while (std::getline(ss, dir, ':'))
+                {
+                    std::string fullPath = dir + "/" + cmd;
+
+                    if (access(fullPath.c_str(), X_OK) == 0)
+                    {
+                        std::cout << cmd << " is " << fullPath << std::endl;
+                        found = true;
+                        break;
+                    }
+                }
+
+                if (!found)
+                    std::cout << cmd << ": not found" << std::endl;
+            }
+        }
+        else if (args[0] == "pwd")
+        {
+            char cwd[1024];
+
+            if (getcwd(cwd, sizeof(cwd)) != nullptr)
+                std::cout << cwd << std::endl;
+        }
+        else if (args[0] == "cd")
+        {
+            if (args.size() < 2)
+                continue;
+
+            std::string path = args[1];
+
+            if (path == "~")
+                path = getenv("HOME");
+
+            if (chdir(path.c_str()) != 0)
+            {
+                std::cout << "cd: " << path
+                          << ": No such file or directory"
+                          << std::endl;
+            }
+        }
+        else
+        {
+            std::vector<char*> argv;
+
+            for (auto& arg : args)
+                argv.push_back(const_cast<char*>(arg.c_str()));
+
+            argv.push_back(nullptr);
+
+            pid_t pid = fork();
+
+            if (pid == 0)
+            {
+                execvp(argv[0], argv.data());
+
+                std::cout << args[0] << ": not found" << std::endl;
+                exit(1);
+            }
+
+            wait(nullptr);
+        }
     }
+
+    return 0;
   }
-}
+  
