@@ -12,6 +12,7 @@ int main() {
 
     while (true)
     {
+      bool escaped = false;
         std::cout << "$ ";
 
         std::string command;
@@ -25,7 +26,16 @@ int main() {
 
         for (char c : command)
         {
-            if (c == '\'' && !in_double_quote)
+            if (escaped)
+            {
+                current += c;
+                escaped = false;
+            }
+            else if (!in_single_quote && !in_double_quote && c == '\\')
+            {
+                escaped = true;
+            }
+            else if (c == '\'' && !in_double_quote)
             {
                 in_single_quote = !in_single_quote;
             }
