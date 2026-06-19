@@ -17,19 +17,23 @@ int main() {
         std::string command;
         if (!std::getline(std::cin, command))
             break;
-
-        // Parse command (supports single quotes)
         std::vector<std::string> args;
         std::string current;
+
         bool in_single_quote = false;
+        bool in_double_quote = false;
 
         for (char c : command)
         {
-            if (c == '\'')
+            if (c == '\'' && !in_double_quote)
             {
                 in_single_quote = !in_single_quote;
             }
-            else if (c == ' ' && !in_single_quote)
+            else if (c == '"' && !in_single_quote)
+            {
+                in_double_quote = !in_double_quote;
+            }
+            else if (c == ' ' && !in_single_quote && !in_double_quote)
             {
                 if (!current.empty())
                 {
@@ -44,7 +48,9 @@ int main() {
         }
 
         if (!current.empty())
+        {
             args.push_back(current);
+        }
 
         if (args.empty())
             continue;
@@ -152,4 +158,3 @@ int main() {
 
     return 0;
   }
-  
