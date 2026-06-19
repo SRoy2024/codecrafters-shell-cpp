@@ -26,7 +26,7 @@ int main() {
     }
     else if(command.substr(0,5) == "type " )
     {
-      if((command.substr(5) == "echo" || command.substr(5) == "exit" || command.substr(5) == "type" || command.substr(5) == "pwd"))
+      if((command.substr(5) == "echo" || command.substr(5) == "exit" || command.substr(5) == "type" || command.substr(5) == "pwd" || command.substr(5) == "cd"))
         std::cout<<command.substr(5)<<" is a shell builtin"<<std::endl;
       else
       {
@@ -58,6 +58,12 @@ int main() {
       char cwd[1024];
       if(getcwd(cwd, sizeof(cwd)) != nullptr)
           std::cout<<cwd<<std::endl;
+    }
+    else if ( command.rfind("ch", 0) == 0)
+    {
+      std::string Path = command.substr(3);
+      if(chdir(Path.c_str()) != 0)
+        std::cout<<"cd::"<<Path<<": No such file or directory"<<std::endl;
     }
     else
     {
