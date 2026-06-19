@@ -59,7 +59,7 @@ int main() {
       if(getcwd(cwd, sizeof(cwd)) != nullptr)
           std::cout<<cwd<<std::endl;
     }
-    else if ( command.rfind("ch", 0) == 0)
+    else if ( command.rfind("cd", 0) == 0)
     {
       std::string Path = command.substr(3);
       if(chdir(Path.c_str()) != 0)
