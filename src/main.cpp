@@ -15,12 +15,11 @@ struct BackgroundJob {
     pid_t pid;
     std::string command;
     std::string status;
-    bool already_reported_done; // Flags jobs that were displayed as Done
+    bool already_reported_done; 
 };
 
-// Helper function to reap completed background jobs and display them
-void reap_background_jobs(std::vector<BackgroundJob>& bg_jobs, std::ostream* out) {
-    // First pass: Poll all tracking jobs via non-blocking waitpid
+// Polling pass: check for state transitions
+void poll_background_jobs(std::vector<BackgroundJob>& bg_jobs) {
     for (auto& job : bg_jobs)
     {
         if (job.status == "Running")
@@ -30,7 +29,6 @@ void reap_background_jobs(std::vector<BackgroundJob>& bg_jobs, std::ostream* out
             if (res > 0 && WIFEXITED(status))
             {
                 job.status = "Done";
-                // Standard shell requirement: strip trailing ' &' when a job finishes
                 if (job.command.size() >= 2 && job.command.substr(job.command.size() - 2) == " &")
                 {
                     job.command = job.command.substr(0, job.command.size() - 2);
@@ -38,14 +36,16 @@ void reap_background_jobs(std::vector<BackgroundJob>& bg_jobs, std::ostream* out
             }
         }
     }
+}
 
-    // Second pass: Calculate dynamic markers and render output for Done jobs or inside 'jobs'
+// Print pass: Displays jobs based on selection (only Done jobs for automatic reaping, or ALL jobs for builtin)
+void print_jobs(std::vector<BackgroundJob>& bg_jobs, std::ostream* out, bool only_done) {
     int num_jobs = static_cast<int>(bg_jobs.size());
-    bool printed_any = false;
     for (int i = 0; i < num_jobs; ++i)
     {
-        // We only print automatically if the status transitioned to Done
-        if (bg_jobs[i].status == "Done" && !bg_jobs[i].already_reported_done)
+        bool should_print = !only_done || (bg_jobs[i].status == "Done" && !bg_jobs[i].already_reported_done);
+        
+        if (should_print)
         {
             char marker = ' ';
             if (i == num_jobs - 1) 
@@ -61,12 +61,16 @@ void reap_background_jobs(std::vector<BackgroundJob>& bg_jobs, std::ostream* out
                    << std::left << std::setw(24) << bg_jobs[i].status 
                    << bg_jobs[i].command << std::endl;
 
-            bg_jobs[i].already_reported_done = true;
-            printed_any = true;
+            if (bg_jobs[i].status == "Done")
+            {
+                bg_jobs[i].already_reported_done = true;
+            }
         }
     }
+}
 
-    // Third pass: Clean up jobs from the data structure that were just reported as Done
+// Cleanup pass: clear out reported Done entries
+void clean_done_jobs(std::vector<BackgroundJob>& bg_jobs) {
     std::vector<BackgroundJob> persistent_jobs;
     for (const auto& job : bg_jobs)
     {
@@ -83,12 +87,14 @@ int main() {
     std::cerr << std::unitbuf;
 
     int job_count = 1; 
-    std::vector<BackgroundJob> bg_jobs; // Vector to keep track of active background jobs
+    std::vector<BackgroundJob> bg_jobs; 
 
     while (true)
     {
-        // 1. Automatic Reaping before the prompt appears
-        reap_background_jobs(bg_jobs, &std::cout);
+        // 1. Automatic Reaping before the prompt appears (only displays freshly 'Done' jobs)
+        poll_background_jobs(bg_jobs);
+        print_jobs(bg_jobs, &std::cout, true);
+        clean_done_jobs(bg_jobs);
 
         bool escaped = false;
 
@@ -165,12 +171,11 @@ int main() {
         if (args.empty())
             continue;
 
-        // Check if the command should run in the background
         bool is_background = false;
         if (args.back() == "&")
         {
             is_background = true;
-            args.pop_back(); // Remove the '&' from arguments execution list
+            args.pop_back(); 
         }
 
         if (args.empty())
@@ -338,29 +343,12 @@ int main() {
         }
         else if (args[0] == "jobs")
         {
-            // 2. Builtin Reaping: check states right before rendering the list
-            reap_background_jobs(bg_jobs, out);
-
-            int num_jobs = static_cast<int>(bg_jobs.size());
-            for (int i = 0; i < num_jobs; ++i)
-            {
-                char marker = ' ';
-                if (i == num_jobs - 1) 
-                {
-                    marker = '+';
-                } 
-                else if (i == num_jobs - 2) 
-                {
-                    marker = '-';
-                }
-
-                (*out) << "[" << bg_jobs[i].id << "]" << marker << "  " 
-                       << std::left << std::setw(24) << bg_jobs[i].status 
-                       << bg_jobs[i].command << std::endl;
-            }
+            // 2. Builtin Reaping: Poll updates, print EVERYTHING, then sweep away completed jobs
+            poll_background_jobs(bg_jobs);
+            print_jobs(bg_jobs, out, false); // false = Print all current Running & Done jobs ordered safely together
+            clean_done_jobs(bg_jobs);
         }
         else {
-            // Reconstruct full command string for job list representation
             std::string full_command_str = "";
             for (size_t i = 0; i < args.size(); ++i) {
                 full_command_str += args[i];
@@ -414,7 +402,6 @@ int main() {
             {
                 std::cout << "[" << job_count << "] " << pid << std::endl;
                 
-                // Track the new background job inside our list
                 BackgroundJob new_job = {job_count, pid, full_command_str, "Running", false};
                 bg_jobs.push_back(new_job);
                 
