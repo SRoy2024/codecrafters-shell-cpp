@@ -74,7 +74,6 @@ bool is_builtin(const std::string& cmd) {
     return (cmd == "echo" || cmd == "exit" || cmd == "type" || cmd == "pwd" || cmd == "cd" || cmd == "jobs");
 }
 
-// Helper to execute builtins uniformly in parent or child environments
 void execute_builtin(const std::vector<std::string>& args, std::ostream& out, std::ostream& err, std::vector<BackgroundJob>& bg_jobs) {
     if (args[0] == "exit") {
         exit(0); 
@@ -179,57 +178,80 @@ int main() {
         }
         if (args.empty()) continue;
 
-        // Pipeline Logic Execution
-        auto pipe_it = std::find(args.begin(), args.end(), "|");
-        if (pipe_it != args.end())
+        // Robust Pipeline Segmentation Check
+        bool has_pipe = false;
+        for (const auto& arg : args) {
+            if (arg == "|") {
+                has_pipe = true;
+                break;
+            }
+        }
+
+        if (has_pipe)
         {
-            std::vector<std::string> left_args(args.begin(), pipe_it);
-            std::vector<std::string> right_args(pipe_it + 1, args.end());
-
-            if (left_args.empty() || right_args.empty()) continue;
-
-            int pipe_fds[2];
-            if (pipe(pipe_fds) == -1) continue;
-
-            pid_t left_pid = fork();
-            if (left_pid == 0)
-            {
-                dup2(pipe_fds[1], STDOUT_FILENO);
-                close(pipe_fds[0]); close(pipe_fds[1]);
-
-                if (is_builtin(left_args[0])) {
-                    execute_builtin(left_args, std::cout, std::cerr, bg_jobs);
-                    exit(0);
+            std::vector<std::vector<std::string>> pipeline_commands;
+            std::vector<std::string> current_cmd;
+            
+            for (const auto& arg : args) {
+                if (arg == "|") {
+                    if (!current_cmd.empty()) {
+                        pipeline_commands.push_back(current_cmd);
+                        current_cmd.clear();
+                    }
                 } else {
-                    std::vector<char*> left_argv;
-                    for (auto& arg : left_args) left_argv.push_back(const_cast<char*>(arg.c_str()));
-                    left_argv.push_back(nullptr);
-                    execvp(left_argv[0], left_argv.data());
-                    std::cerr << left_args[0] << ": not found" << std::endl;
-                    exit(1);
+                    current_cmd.push_back(arg);
+                }
+            }
+            if (!current_cmd.empty()) {
+                pipeline_commands.push_back(current_cmd);
+            }
+
+            size_t num_cmds = pipeline_commands.size();
+            int num_pipes = num_cmds - 1;
+            
+            std::vector<int> pipe_fds(2 * num_pipes);
+            for (int i = 0; i < num_pipes; ++i) {
+                if (pipe(pipe_fds.data() + 2 * i) == -1) {
+                    perror("pipe failed");
+                    break;
                 }
             }
 
-            pid_t right_pid = fork();
-            if (right_pid == 0)
-            {
-                dup2(pipe_fds[0], STDIN_FILENO);
-                close(pipe_fds[0]); close(pipe_fds[1]);
+            std::vector<pid_t> child_pids;
 
-                if (is_builtin(right_args[0])) {
-                    execute_builtin(right_args, std::cout, std::cerr, bg_jobs);
-                    exit(0);
-                } else {
-                    std::vector<char*> right_argv;
-                    for (auto& arg : right_args) right_argv.push_back(const_cast<char*>(arg.c_str()));
-                    right_argv.push_back(nullptr);
-                    execvp(right_argv[0], right_argv.data());
-                    std::cerr << right_args[0] << ": not found" << std::endl;
-                    exit(1);
+            for (size_t i = 0; i < num_cmds; ++i) {
+                pid_t pid = fork();
+                if (pid == 0) {
+                    if (i > 0) {
+                        dup2(pipe_fds[2 * (i - 1)], STDIN_FILENO);
+                    }
+                    if (i < num_cmds - 1) {
+                        dup2(pipe_fds[2 * i + 1], STDOUT_FILENO);
+                    }
+
+                    for (int j = 0; j < 2 * num_pipes; ++j) {
+                        close(pipe_fds[j]);
+                    }
+
+                    if (is_builtin(pipeline_commands[i][0])) {
+                        execute_builtin(pipeline_commands[i], std::cout, std::cerr, bg_jobs);
+                        exit(0);
+                    } else {
+                        std::vector<char*> child_argv;
+                        for (auto& arg : pipeline_commands[i]) child_argv.push_back(const_cast<char*>(arg.c_str()));
+                        child_argv.push_back(nullptr);
+                        
+                        execvp(child_argv[0], child_argv.data());
+                        std::cerr << pipeline_commands[i][0] << ": not found" << std::endl;
+                        exit(1);
+                    }
                 }
+                child_pids.push_back(pid);
             }
 
-            close(pipe_fds[0]); close(pipe_fds[1]);
+            for (int j = 0; j < 2 * num_pipes; ++j) {
+                close(pipe_fds[j]);
+            }
 
             if (is_background) {
                 int next_job_id = 1;
@@ -238,11 +260,12 @@ int main() {
                     for (const auto& job : bg_jobs) if (job.id > max_id) max_id = job.id;
                     next_job_id = max_id + 1;
                 }
-                std::cout << "[" << next_job_id << "] " << right_pid << std::endl;
-                bg_jobs.push_back({next_job_id, right_pid, command, "Running", false});
+                std::cout << "[" << next_job_id << "] " << child_pids.back() << std::endl;
+                bg_jobs.push_back({next_job_id, child_pids.back(), command, "Running", false});
             } else {
-                waitpid(left_pid, nullptr, 0);
-                waitpid(right_pid, nullptr, 0);
+                for (pid_t c_pid : child_pids) {
+                    waitpid(c_pid, nullptr, 0);
+                }
             }
             continue;
         }
@@ -284,7 +307,6 @@ int main() {
         if (args.empty()) continue;
 
         if (is_builtin(args[0])) {
-            // Run builtins in the current shell process context if no pipe is involved
             execute_builtin(args, *out, *err, bg_jobs);
         } else {
             std::string full_command_str = "";
