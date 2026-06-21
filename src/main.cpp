@@ -275,7 +275,7 @@ int main() {
         }
         else if (args[0] == "jobs")
         {
-            // First pass: Poll active jobs using non-blocking waitpid to see if any completed
+            // First pass: Poll all tracking jobs via non-blocking waitpid
             for (auto& job : bg_jobs)
             {
                 if (job.status == "Running")
@@ -285,7 +285,7 @@ int main() {
                     if (res > 0 && WIFEXITED(status))
                     {
                         job.status = "Done";
-                        // Spec requires removing trailing " &" when status is "Done"
+                        // Standard shell requirement: strip trailing ' &' when a job finishes
                         if (job.command.size() >= 2 && job.command.substr(job.command.size() - 2) == " &")
                         {
                             job.command = job.command.substr(0, job.command.size() - 2);
@@ -294,32 +294,31 @@ int main() {
                 }
             }
 
-            // Second pass: Render the requested jobs list output
+            // Second pass: Calculate dynamic markers and render output
             int num_jobs = static_cast<int>(bg_jobs.size());
             for (int i = 0; i < num_jobs; ++i)
             {
                 char marker = ' ';
                 if (i == num_jobs - 1) 
                 {
-                    marker = '+'; // Most recent
+                    marker = '+'; // Dynamically assign to the highest remaining position
                 } 
                 else if (i == num_jobs - 2) 
                 {
-                    marker = '-'; // Second most recent
+                    marker = '-'; // Dynamically assign to the second-highest remaining position
                 }
 
                 (*out) << "[" << bg_jobs[i].id << "]" << marker << "  " 
                        << std::left << std::setw(24) << bg_jobs[i].status 
                        << bg_jobs[i].command << std::endl;
 
-                // Flag it so we clean it up right after printing
                 if (bg_jobs[i].status == "Done")
                 {
                     bg_jobs[i].already_reported_done = true;
                 }
             }
 
-            // Third pass: Filter out jobs that were acknowledged as "Done"
+            // Third pass: Retain only the persistent jobs for successive calls
             std::vector<BackgroundJob> persistent_jobs;
             for (const auto& job : bg_jobs)
             {
