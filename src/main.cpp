@@ -274,16 +274,26 @@ int main() {
         }
         else if (args[0] == "jobs")
         {
-            // List running background jobs matching the exact shell specifications
-            for (const auto& job : bg_jobs)
+            // Cast to signed int to guarantee safety from underflow bugs
+            int num_jobs = static_cast<int>(bg_jobs.size());
+            for (int i = 0; i < num_jobs; ++i)
             {
-                (*out) << "[" << job.id << "]+  " 
-                       << std::left << std::setw(24) << job.status 
-                       << job.command << std::endl;
+                char marker = ' ';
+                if (i == num_jobs - 1) 
+                {
+                    marker = '+'; // Most recent
+                } 
+                else if (i == num_jobs - 2) 
+                {
+                    marker = '-'; // Second most recent
+                }
+
+                (*out) << "[" << bg_jobs[i].id << "]" << marker << "  " 
+                       << std::left << std::setw(24) << bg_jobs[i].status 
+                       << bg_jobs[i].command << std::endl;
             }
         }
-        else
-        {
+        else {
             // Reconstruct full command string for job list representation
             std::string full_command_str = "";
             for (size_t i = 0; i < args.size(); ++i) {
