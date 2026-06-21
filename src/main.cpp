@@ -15,6 +15,7 @@ struct BackgroundJob {
     pid_t pid;
     std::string command;
     std::string status;
+    bool already_reported_done; // Flags jobs that were displayed as Done
 };
 
 int main() {
@@ -274,7 +275,26 @@ int main() {
         }
         else if (args[0] == "jobs")
         {
-            // Cast to signed int to guarantee safety from underflow bugs
+            // First pass: Poll active jobs using non-blocking waitpid to see if any completed
+            for (auto& job : bg_jobs)
+            {
+                if (job.status == "Running")
+                {
+                    int status;
+                    pid_t res = waitpid(job.pid, &status, WNOHANG);
+                    if (res > 0 && WIFEXITED(status))
+                    {
+                        job.status = "Done";
+                        // Spec requires removing trailing " &" when status is "Done"
+                        if (job.command.size() >= 2 && job.command.substr(job.command.size() - 2) == " &")
+                        {
+                            job.command = job.command.substr(0, job.command.size() - 2);
+                        }
+                    }
+                }
+            }
+
+            // Second pass: Render the requested jobs list output
             int num_jobs = static_cast<int>(bg_jobs.size());
             for (int i = 0; i < num_jobs; ++i)
             {
@@ -291,7 +311,24 @@ int main() {
                 (*out) << "[" << bg_jobs[i].id << "]" << marker << "  " 
                        << std::left << std::setw(24) << bg_jobs[i].status 
                        << bg_jobs[i].command << std::endl;
+
+                // Flag it so we clean it up right after printing
+                if (bg_jobs[i].status == "Done")
+                {
+                    bg_jobs[i].already_reported_done = true;
+                }
             }
+
+            // Third pass: Filter out jobs that were acknowledged as "Done"
+            std::vector<BackgroundJob> persistent_jobs;
+            for (const auto& job : bg_jobs)
+            {
+                if (!job.already_reported_done)
+                {
+                    persistent_jobs.push_back(job);
+                }
+            }
+            bg_jobs = persistent_jobs;
         }
         else {
             // Reconstruct full command string for job list representation
@@ -349,7 +386,7 @@ int main() {
                 std::cout << "[" << job_count << "] " << pid << std::endl;
                 
                 // Track the new background job inside our list
-                BackgroundJob new_job = {job_count, pid, full_command_str, "Running"};
+                BackgroundJob new_job = {job_count, pid, full_command_str, "Running", false};
                 bg_jobs.push_back(new_job);
                 
                 job_count++;
