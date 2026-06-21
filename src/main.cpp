@@ -18,6 +18,66 @@ struct BackgroundJob {
     bool already_reported_done; // Flags jobs that were displayed as Done
 };
 
+// Helper function to reap completed background jobs and display them
+void reap_background_jobs(std::vector<BackgroundJob>& bg_jobs, std::ostream* out) {
+    // First pass: Poll all tracking jobs via non-blocking waitpid
+    for (auto& job : bg_jobs)
+    {
+        if (job.status == "Running")
+        {
+            int status;
+            pid_t res = waitpid(job.pid, &status, WNOHANG);
+            if (res > 0 && WIFEXITED(status))
+            {
+                job.status = "Done";
+                // Standard shell requirement: strip trailing ' &' when a job finishes
+                if (job.command.size() >= 2 && job.command.substr(job.command.size() - 2) == " &")
+                {
+                    job.command = job.command.substr(0, job.command.size() - 2);
+                }
+            }
+        }
+    }
+
+    // Second pass: Calculate dynamic markers and render output for Done jobs or inside 'jobs'
+    int num_jobs = static_cast<int>(bg_jobs.size());
+    bool printed_any = false;
+    for (int i = 0; i < num_jobs; ++i)
+    {
+        // We only print automatically if the status transitioned to Done
+        if (bg_jobs[i].status == "Done" && !bg_jobs[i].already_reported_done)
+        {
+            char marker = ' ';
+            if (i == num_jobs - 1) 
+            {
+                marker = '+'; 
+            } 
+            else if (i == num_jobs - 2) 
+            {
+                marker = '-'; 
+            }
+
+            (*out) << "[" << bg_jobs[i].id << "]" << marker << "  " 
+                   << std::left << std::setw(24) << bg_jobs[i].status 
+                   << bg_jobs[i].command << std::endl;
+
+            bg_jobs[i].already_reported_done = true;
+            printed_any = true;
+        }
+    }
+
+    // Third pass: Clean up jobs from the data structure that were just reported as Done
+    std::vector<BackgroundJob> persistent_jobs;
+    for (const auto& job : bg_jobs)
+    {
+        if (!job.already_reported_done)
+        {
+            persistent_jobs.push_back(job);
+        }
+    }
+    bg_jobs = persistent_jobs;
+}
+
 int main() {
     std::cout << std::unitbuf;
     std::cerr << std::unitbuf;
@@ -27,6 +87,9 @@ int main() {
 
     while (true)
     {
+        // 1. Automatic Reaping before the prompt appears
+        reap_background_jobs(bg_jobs, &std::cout);
+
         bool escaped = false;
 
         std::cout << "$ ";
@@ -275,59 +338,26 @@ int main() {
         }
         else if (args[0] == "jobs")
         {
-            // First pass: Poll all tracking jobs via non-blocking waitpid
-            for (auto& job : bg_jobs)
-            {
-                if (job.status == "Running")
-                {
-                    int status;
-                    pid_t res = waitpid(job.pid, &status, WNOHANG);
-                    if (res > 0 && WIFEXITED(status))
-                    {
-                        job.status = "Done";
-                        // Standard shell requirement: strip trailing ' &' when a job finishes
-                        if (job.command.size() >= 2 && job.command.substr(job.command.size() - 2) == " &")
-                        {
-                            job.command = job.command.substr(0, job.command.size() - 2);
-                        }
-                    }
-                }
-            }
+            // 2. Builtin Reaping: check states right before rendering the list
+            reap_background_jobs(bg_jobs, out);
 
-            // Second pass: Calculate dynamic markers and render output
             int num_jobs = static_cast<int>(bg_jobs.size());
             for (int i = 0; i < num_jobs; ++i)
             {
                 char marker = ' ';
                 if (i == num_jobs - 1) 
                 {
-                    marker = '+'; // Dynamically assign to the highest remaining position
+                    marker = '+';
                 } 
                 else if (i == num_jobs - 2) 
                 {
-                    marker = '-'; // Dynamically assign to the second-highest remaining position
+                    marker = '-';
                 }
 
                 (*out) << "[" << bg_jobs[i].id << "]" << marker << "  " 
                        << std::left << std::setw(24) << bg_jobs[i].status 
                        << bg_jobs[i].command << std::endl;
-
-                if (bg_jobs[i].status == "Done")
-                {
-                    bg_jobs[i].already_reported_done = true;
-                }
             }
-
-            // Third pass: Retain only the persistent jobs for successive calls
-            std::vector<BackgroundJob> persistent_jobs;
-            for (const auto& job : bg_jobs)
-            {
-                if (!job.already_reported_done)
-                {
-                    persistent_jobs.push_back(job);
-                }
-            }
-            bg_jobs = persistent_jobs;
         }
         else {
             // Reconstruct full command string for job list representation
