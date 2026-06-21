@@ -12,6 +12,8 @@ int main() {
     std::cout << std::unitbuf;
     std::cerr << std::unitbuf;
 
+    int job_count = 1; // Keep track of the background job count
+
     while (true)
     {
         bool escaped = false;
@@ -85,6 +87,20 @@ int main() {
         {
             args.push_back(current);
         }
+
+        if (args.empty())
+            continue;
+
+        // Check if the command should run in the background
+        bool is_background = false;
+        if (args.back() == "&")
+        {
+            is_background = true;
+            args.pop_back(); // Remove the '&' from arguments
+        }
+
+        if (args.empty())
+            continue;
 
         std::string outputFile;
         std::string errorFile;
@@ -319,7 +335,18 @@ int main() {
                 exit(1);
             }
 
-            wait(nullptr);
+            if (is_background)
+            {
+                // Print job confirmation and track job count
+                std::cout << "[" << job_count << "] " << pid << std::endl;
+                job_count++;
+                // DO NOT wait here so the prompt can return immediately
+            }
+            else
+            {
+                // Foreground command: wait for it to complete
+                waitpid(pid, nullptr, 0);
+            }
         }
     }
 
