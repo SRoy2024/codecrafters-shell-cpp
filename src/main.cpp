@@ -86,15 +86,17 @@ int main() {
             args.push_back(current);
         }
 
-        // Handle stdout redirection (> and 1>)
+        // Handle redirections
         std::string outputFile;
         std::string errorFile;
 
         bool redirectStdout = false;
         bool redirectStderr = false;
-        bool appendStdout = false;
 
-        for (size_t i = 0; i + 1 < args.size(); )
+        bool appendStdout = false;
+        bool appendStderr = false;
+
+        for (size_t i = 0; i + 1 < args.size();)
         {
             if (args[i] == ">" || args[i] == "1>")
             {
@@ -115,15 +117,26 @@ int main() {
             else if (args[i] == "2>")
             {
                 redirectStderr = true;
+                appendStderr = false;
+                errorFile = args[i + 1];
+
+                args.erase(args.begin() + i, args.begin() + i + 2);
+            }
+            else if (args[i] == "2>>")
+            {
+                redirectStderr = true;
+                appendStderr = true;
                 errorFile = args[i + 1];
 
                 args.erase(args.begin() + i, args.begin() + i + 2);
             }
             else
             {
-                i++;
+                ++i;
             }
         }
+
+        // Setup output stream for builtins
         std::ofstream outFile;
         std::ostream* out = &std::cout;
 
@@ -137,14 +150,20 @@ int main() {
             out = &outFile;
         }
 
+        // Setup error stream for builtins
         std::ofstream errFile;
         std::ostream* err = &std::cerr;
 
         if (redirectStderr)
         {
-            errFile.open(errorFile);
+            if (appendStderr)
+                errFile.open(errorFile, std::ios::app);
+            else
+                errFile.open(errorFile);
+
             err = &errFile;
         }
+
         if (args.empty())
             continue;
 
@@ -174,14 +193,16 @@ int main() {
             if (cmd == "echo" ||
                 cmd == "exit" ||
                 cmd == "type" ||
-                cmd == "pwd"  ||
+                cmd == "pwd" ||
                 cmd == "cd")
             {
                 (*out) << cmd << " is a shell builtin" << std::endl;
             }
             else
             {
-                std::string path = std::getenv("PATH");
+                const char* pathEnv = std::getenv("PATH");
+                std::string path = pathEnv ? pathEnv : "";
+
                 std::stringstream ss(path);
                 std::string dir;
 
@@ -222,7 +243,9 @@ int main() {
 
             if (chdir(path.c_str()) != 0)
             {
-                (*err) << "cd: "<< path<< ": No such file or directory"<< std::endl;
+                (*err) << "cd: " << path
+                       << ": No such file or directory"
+                       << std::endl;
             }
         }
         else
@@ -238,6 +261,7 @@ int main() {
 
             if (pid == 0)
             {
+                // stdout redirection
                 if (redirectStdout)
                 {
                     int fd;
@@ -263,13 +287,27 @@ int main() {
                     close(fd);
                 }
 
+                // stderr redirection
                 if (redirectStderr)
                 {
-                    int fd = open(
-                        errorFile.c_str(),
-                        O_WRONLY | O_CREAT | O_TRUNC,
-                        0644
-                    );
+                    int fd;
+
+                    if (appendStderr)
+                    {
+                        fd = open(
+                            errorFile.c_str(),
+                            O_WRONLY | O_CREAT | O_APPEND,
+                            0644
+                        );
+                    }
+                    else
+                    {
+                        fd = open(
+                            errorFile.c_str(),
+                            O_WRONLY | O_CREAT | O_TRUNC,
+                            0644
+                        );
+                    }
 
                     dup2(fd, STDERR_FILENO);
                     close(fd);
