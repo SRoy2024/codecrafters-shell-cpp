@@ -86,7 +86,6 @@ int main() {
             args.push_back(current);
         }
 
-        // Handle redirections
         std::string outputFile;
         std::string errorFile;
 
@@ -136,7 +135,6 @@ int main() {
             }
         }
 
-        // Setup output stream for builtins
         std::ofstream outFile;
         std::ostream* out = &std::cout;
 
@@ -150,7 +148,6 @@ int main() {
             out = &outFile;
         }
 
-        // Setup error stream for builtins
         std::ofstream errFile;
         std::ostream* err = &std::cerr;
 
@@ -194,7 +191,8 @@ int main() {
                 cmd == "exit" ||
                 cmd == "type" ||
                 cmd == "pwd" ||
-                cmd == "cd")
+                cmd == "cd" ||
+                cmd == "jobs")
             {
                 (*out) << cmd << " is a shell builtin" << std::endl;
             }
@@ -248,6 +246,10 @@ int main() {
                        << std::endl;
             }
         }
+        else if (args[0] == "jobs")
+        {
+            // Empty implementation for this stage
+        }
         else
         {
             std::vector<char*> argv;
@@ -261,7 +263,6 @@ int main() {
 
             if (pid == 0)
             {
-                // stdout redirection
                 if (redirectStdout)
                 {
                     int fd;
@@ -287,7 +288,6 @@ int main() {
                     close(fd);
                 }
 
-                // stderr redirection
                 if (redirectStderr)
                 {
                     int fd;
