@@ -7,12 +7,22 @@
 #include <sys/wait.h>
 #include <fstream>
 #include <fcntl.h>
+#include <iomanip>
+
+// Struct to track background jobs
+struct BackgroundJob {
+    int id;
+    pid_t pid;
+    std::string command;
+    std::string status;
+};
 
 int main() {
     std::cout << std::unitbuf;
     std::cerr << std::unitbuf;
 
-    int job_count = 1; // Keep track of the background job count
+    int job_count = 1; 
+    std::vector<BackgroundJob> bg_jobs; // Vector to keep track of active background jobs
 
     while (true)
     {
@@ -96,7 +106,7 @@ int main() {
         if (args.back() == "&")
         {
             is_background = true;
-            args.pop_back(); // Remove the '&' from arguments
+            args.pop_back(); // Remove the '&' from arguments execution list
         }
 
         if (args.empty())
@@ -264,12 +274,27 @@ int main() {
         }
         else if (args[0] == "jobs")
         {
-            // Empty implementation for this stage
+            // List running background jobs matching the exact shell specifications
+            for (const auto& job : bg_jobs)
+            {
+                (*out) << "[" << job.id << "]+  " 
+                       << std::left << std::setw(24) << job.status 
+                       << job.command << std::endl;
+            }
         }
         else
         {
-            std::vector<char*> argv;
+            // Reconstruct full command string for job list representation
+            std::string full_command_str = "";
+            for (size_t i = 0; i < args.size(); ++i) {
+                full_command_str += args[i];
+                if (i + 1 < args.size()) full_command_str += " ";
+            }
+            if (is_background) {
+                full_command_str += " &";
+            }
 
+            std::vector<char*> argv;
             for (auto& arg : args)
                 argv.push_back(const_cast<char*>(arg.c_str()));
 
@@ -282,23 +307,10 @@ int main() {
                 if (redirectStdout)
                 {
                     int fd;
-
                     if (appendStdout)
-                    {
-                        fd = open(
-                            outputFile.c_str(),
-                            O_WRONLY | O_CREAT | O_APPEND,
-                            0644
-                        );
-                    }
+                        fd = open(outputFile.c_str(), O_WRONLY | O_CREAT | O_APPEND, 0644);
                     else
-                    {
-                        fd = open(
-                            outputFile.c_str(),
-                            O_WRONLY | O_CREAT | O_TRUNC,
-                            0644
-                        );
-                    }
+                        fd = open(outputFile.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644);
 
                     dup2(fd, STDOUT_FILENO);
                     close(fd);
@@ -307,23 +319,10 @@ int main() {
                 if (redirectStderr)
                 {
                     int fd;
-
                     if (appendStderr)
-                    {
-                        fd = open(
-                            errorFile.c_str(),
-                            O_WRONLY | O_CREAT | O_APPEND,
-                            0644
-                        );
-                    }
+                        fd = open(errorFile.c_str(), O_WRONLY | O_CREAT | O_APPEND, 0644);
                     else
-                    {
-                        fd = open(
-                            errorFile.c_str(),
-                            O_WRONLY | O_CREAT | O_TRUNC,
-                            0644
-                        );
-                    }
+                        fd = open(errorFile.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644);
 
                     dup2(fd, STDERR_FILENO);
                     close(fd);
@@ -337,14 +336,16 @@ int main() {
 
             if (is_background)
             {
-                // Print job confirmation and track job count
                 std::cout << "[" << job_count << "] " << pid << std::endl;
+                
+                // Track the new background job inside our list
+                BackgroundJob new_job = {job_count, pid, full_command_str, "Running"};
+                bg_jobs.push_back(new_job);
+                
                 job_count++;
-                // DO NOT wait here so the prompt can return immediately
             }
             else
             {
-                // Foreground command: wait for it to complete
                 waitpid(pid, nullptr, 0);
             }
         }
