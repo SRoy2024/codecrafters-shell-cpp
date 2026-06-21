@@ -8,6 +8,7 @@
 #include <fstream>
 #include <fcntl.h>
 #include <iomanip>
+#include <algorithm> // For std::max
 
 // Struct to track background jobs
 struct BackgroundJob {
@@ -86,7 +87,6 @@ int main() {
     std::cout << std::unitbuf;
     std::cerr << std::unitbuf;
 
-    int job_count = 1; 
     std::vector<BackgroundJob> bg_jobs; 
 
     while (true)
@@ -345,7 +345,7 @@ int main() {
         {
             // 2. Builtin Reaping: Poll updates, print EVERYTHING, then sweep away completed jobs
             poll_background_jobs(bg_jobs);
-            print_jobs(bg_jobs, out, false); // false = Print all current Running & Done jobs ordered safely together
+            print_jobs(bg_jobs, out, false); 
             clean_done_jobs(bg_jobs);
         }
         else {
@@ -400,12 +400,25 @@ int main() {
 
             if (is_background)
             {
-                std::cout << "[" << job_count << "] " << pid << std::endl;
+                // Dynamic Job Number Recycling Logic
+                int next_job_id = 1;
+                if (!bg_jobs.empty())
+                {
+                    int max_id = 0;
+                    for (const auto& job : bg_jobs)
+                    {
+                        if (job.id > max_id)
+                        {
+                            max_id = job.id;
+                        }
+                    }
+                    next_job_id = max_id + 1;
+                }
+
+                std::cout << "[" << next_job_id << "] " << pid << std::endl;
                 
-                BackgroundJob new_job = {job_count, pid, full_command_str, "Running", false};
+                BackgroundJob new_job = {next_job_id, pid, full_command_str, "Running", false};
                 bg_jobs.push_back(new_job);
-                
-                job_count++;
             }
             else
             {
